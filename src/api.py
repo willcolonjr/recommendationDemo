@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from functools import lru_cache
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -27,6 +28,10 @@ class RecommendationRequest(BaseModel):
     query: str = Field(..., description="Free-text description of desired resort features.")
     k: int = Field(5, ge=1, le=20, description="Number of results to return.")
     use_vector: bool = Field(True, description="Toggle between vector similarity and trigram search.")
+    model_id: str | None = Field(
+        None,
+        description="Identifier for the embedding model to use when vector search is enabled.",
+    )
 
 
 class ResortResponse(BaseModel):
@@ -41,6 +46,8 @@ class ResortResponse(BaseModel):
 
 
 class RecommendationResponse(BaseModel):
+    model_id: str | None = Field(None, description="Embedding model identifier used for scoring.")
+    model_name: str | None = Field(None, description="Human-readable name of the embedding model.")
     results: list[ResortResponse]
 
 
@@ -48,11 +55,11 @@ def get_settings_dependency() -> Settings:
     return get_settings()
 
 
-def get_model_dependency(settings: Annotated[Settings, Depends(get_settings_dependency)]) -> SentenceTransformer:
-    model_name = settings.embedding.model_name
-    if not hasattr(get_model_dependency, "_model"):
-        get_model_dependency._model = SentenceTransformer(model_name)  # type: ignore[attr-defined]
-    return get_model_dependency._model  # type: ignore[attr-defined]
+@lru_cache(maxsize=8)
+def _load_model(model_name: str) -> SentenceTransformer:
+    """Cache and return a ``SentenceTransformer`` instance by name."""
+
+    return SentenceTransformer(model_name)
 
 
 @app.get("/api/health", tags=["meta"])
@@ -62,25 +69,70 @@ def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
 
 
+class EmbeddingModelInfo(BaseModel):
+    id: str
+    name: str
+    provider: str
+    description: str
+
+
+class EmbeddingModelListResponse(BaseModel):
+    default_model_id: str
+    models: list[EmbeddingModelInfo]
+
+
+@app.get("/api/models", response_model=EmbeddingModelListResponse, tags=["recommendations"])
+def list_embedding_models(
+    settings: Annotated[Settings, Depends(get_settings_dependency)],
+) -> EmbeddingModelListResponse:
+    """Return metadata about the available embedding models for Flint flows."""
+
+    models = [
+        EmbeddingModelInfo(
+            id=model.id,
+            name=model.name,
+            provider=model.provider,
+            description=model.description,
+        )
+        for model in settings.embedding.available()
+    ]
+    return EmbeddingModelListResponse(
+        default_model_id=settings.embedding.default_model_id,
+        models=models,
+    )
+
+
 @app.post("/api/recommendations", response_model=RecommendationResponse, tags=["recommendations"])
 def create_recommendations(
     payload: RecommendationRequest,
     settings: Annotated[Settings, Depends(get_settings_dependency)],
-    model: Annotated[SentenceTransformer, Depends(get_model_dependency)],
 ) -> RecommendationResponse:
     if not payload.query.strip():
         raise HTTPException(status_code=400, detail="Query must not be empty.")
+
+    resolved_model = None
+    resolved_model_info = None
+    if payload.use_vector:
+        try:
+            resolved_model_info = settings.embedding.resolve(payload.model_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        resolved_model = _load_model(resolved_model_info.model)
 
     rows = fetch_recommendations(
         query=payload.query,
         k=payload.k,
         use_vector=payload.use_vector,
-        model=model if payload.use_vector else None,
+        model=resolved_model if payload.use_vector else None,
         settings=settings,
     )
 
     if not rows:
-        return RecommendationResponse(results=[])
+        return RecommendationResponse(
+            model_id=resolved_model_info.id if resolved_model_info else None,
+            model_name=resolved_model_info.name if resolved_model_info else None,
+            results=[],
+        )
 
     max_score = max(row.score for row in rows)
     min_score = min(row.score for row in rows)
@@ -92,8 +144,10 @@ def create_recommendations(
         return (score - min_score) / denominator
 
     return RecommendationResponse(
+        model_id=resolved_model_info.id if resolved_model_info else None,
+        model_name=resolved_model_info.name if resolved_model_info else None,
         results=[
             ResortResponse(**asdict(row), weight=_normalized(row.score))
             for row in rows
-        ]
+        ],
     )

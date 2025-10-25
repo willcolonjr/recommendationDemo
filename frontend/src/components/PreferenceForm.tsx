@@ -1,4 +1,6 @@
-import { ChangeEvent, FormEvent } from "react";
+import { ChangeEvent, FormEvent, useMemo } from "react";
+
+import { EmbeddingModelOption } from "../types";
 
 export interface PreferenceFormState {
   destination: string;
@@ -15,18 +17,43 @@ interface PreferenceFormProps {
   submitting: boolean;
   onChange: (next: PreferenceFormState) => void;
   onSubmit: () => void;
+  modelOptions: EmbeddingModelOption[];
+  selectedModelId: string | null;
+  onModelChange: (modelId: string) => void;
+  modelError?: string | null;
 }
 
-const PreferenceForm = ({ value, submitting, onChange, onSubmit }: PreferenceFormProps) => {
+const PreferenceForm = ({
+  value,
+  submitting,
+  onChange,
+  onSubmit,
+  modelOptions,
+  selectedModelId,
+  onModelChange,
+  modelError,
+}: PreferenceFormProps) => {
   const handleChange = (event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value: fieldValue } = event.target;
     onChange({ ...value, [name]: fieldValue });
+  };
+
+  const handleModelChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    onModelChange(event.target.value);
   };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     onSubmit();
   };
+
+  const selectedModel = useMemo(
+    () => modelOptions.find((option) => option.id === selectedModelId) ?? null,
+    [modelOptions, selectedModelId]
+  );
+
+  const modelPlaceholder = modelError ? "Models unavailable" : "Loading models…";
+  const modelsAvailable = modelOptions.length > 0;
 
   return (
     <form className="form" onSubmit={handleSubmit}>
@@ -102,6 +129,31 @@ const PreferenceForm = ({ value, submitting, onChange, onSubmit }: PreferenceFor
           rows={3}
           placeholder="Accessibility needs, room requirements, activities..."
         />
+      </label>
+
+      <label className="field">
+        <span className="field__label">Embedding model</span>
+        <select
+          name="embeddingModel"
+          value={selectedModelId ?? ""}
+          onChange={handleModelChange}
+          disabled={!modelsAvailable}
+        >
+          {!modelsAvailable ? (
+            <option value="">{modelPlaceholder}</option>
+          ) : (
+            modelOptions.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.name} · {option.provider}
+              </option>
+            ))
+          )}
+        </select>
+        <p className="field__hint">Swap between available embeddings used by the vector search pipeline.</p>
+        {selectedModel && (
+          <p className="field__hint field__hint--muted">{selectedModel.description}</p>
+        )}
+        {modelError && <p className="field__hint field__hint--error">{modelError}</p>}
       </label>
 
       <div className="form__actions">

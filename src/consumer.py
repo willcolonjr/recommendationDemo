@@ -125,7 +125,12 @@ def main() -> None:
         auto_offset_reset="earliest",
     )
 
-    enricher = ResortEnricher(settings.embedding.model_name)
+    model_config = settings.embedding.resolve()
+    console.print(
+        f"[green]Using embedding model:[/] {model_config.name} ({model_config.model})",
+    )
+
+    enricher = ResortEnricher(model_config.model)
 
     with _postgres_connection(settings) as conn:
         repo = ResortRepository(conn, settings.postgres.schema)
