@@ -22,16 +22,24 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s - %(messa
 @click.option("--query", required=True, help="Free-text description of what the guest wants.")
 @click.option("--k", default=3, show_default=True, help="Number of recommendations to fetch.")
 @click.option("--similarity", is_flag=True, help="Use vector similarity search.")
+@click.option("--model-id", help="Embedding model identifier registered on the API.")
 @click.option(
     "--raw", is_flag=True, help="Print the raw JSON rows returned by Postgres instead of a table."
 )
-def main(query: str, k: int, similarity: bool, raw: bool) -> None:
+def main(query: str, k: int, similarity: bool, model_id: str | None, raw: bool) -> None:
     """Fetch resort recommendations from Postgres."""
     settings = get_settings()
     model = None
 
     if similarity:
-        model = SentenceTransformer(settings.embedding.model_name)
+        try:
+            model_config = settings.embedding.resolve(model_id)
+        except KeyError as exc:
+            raise click.ClickException(str(exc)) from exc
+        model = SentenceTransformer(model_config.model)
+        console.print(
+            f"[cyan]Using embedding model:[/] {model_config.name} ({model_config.model})"
+        )
 
     rows = fetch_recommendations(
         query=query,

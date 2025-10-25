@@ -48,6 +48,13 @@ Copy `.env.example` to `.env` and adjust values as needed:
 cp .env.example .env
 ```
 
+Key environment variables for the embedding pipeline:
+
+| Variable | Description | Default |
+| --- | --- | --- |
+| `EMBEDDING_MODEL` | Default embedding model identifier used by the consumer/API. Must exist in the registry. | `sentence-transformers/all-MiniLM-L6-v2` |
+| `EMBEDDING_MODEL_REGISTRY` | Optional JSON array/object describing the available embedding models. Each entry should include `id`, `model`, `name`, `provider`, and `description`. When omitted, a MiniLM and an E5 model are registered automatically. | *(built-in registry)* |
+
 ### 2. Start infrastructure
 
 ```bash
@@ -157,6 +164,32 @@ Response body:
 * **info** – a human-readable explanation the frontend can surface alongside the resort.
 
 The React UI now displays both the raw score and the normalized weight for each resort, along with the scoring strategy.
+
+### `GET /api/models`
+
+Returns the registry of embedding models that the Flint planning flows can swap between. Sample response:
+
+```json
+{
+  "default_model_id": "sentence-transformers/all-MiniLM-L6-v2",
+  "models": [
+    {
+      "id": "sentence-transformers/all-MiniLM-L6-v2",
+      "name": "all-MiniLM-L6-v2",
+      "provider": "SentenceTransformers",
+      "description": "Balanced general-purpose MiniLM embeddings (384 dims)."
+    },
+    {
+      "id": "intfloat/e5-base-v2",
+      "name": "E5 Base v2",
+      "provider": "Intfloat",
+      "description": "Stronger semantic search embeddings with higher dimensionality (768 dims)."
+    }
+  ]
+}
+```
+
+The frontend consumes this endpoint to show a drop-down for selecting the active embedding model. Requests to `/api/recommendations` can include an optional `model_id` to override the default.
 ## Project Structure
 
 ```

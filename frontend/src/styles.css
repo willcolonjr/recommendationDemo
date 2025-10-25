@@ -87,6 +87,21 @@ body {
   color: #34343a;
 }
 
+.field__hint {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.field__hint--muted {
+  color: #475569;
+}
+
+.field__hint--error {
+  color: #dc2626;
+  font-weight: 600;
+}
+
 input,
 select,
 textarea {

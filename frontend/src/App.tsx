@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import PreferenceForm, { PreferenceFormState } from "./components/PreferenceForm";
 import RecommendationList from "./components/RecommendationList";
-import { Recommendation } from "./types";
+import { EmbeddingModelListResponse, EmbeddingModelOption, Recommendation } from "./types";
 
 const DEFAULT_STATE: PreferenceFormState = {
   destination: "",
@@ -18,6 +18,9 @@ const App = () => {
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [modelOptions, setModelOptions] = useState<EmbeddingModelOption[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string | null>(null);
+  const [modelError, setModelError] = useState<string | null>(null);
 
   const query = useMemo(() => {
     const parts = (
@@ -39,6 +42,43 @@ const App = () => {
     setFormState(state);
   };
 
+  useEffect(() => {
+    let active = true;
+
+    const loadModels = async () => {
+      try {
+        const response = await fetch("/api/models");
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload.detail ?? "Unable to load embedding models.");
+        }
+
+        const data = (await response.json()) as EmbeddingModelListResponse;
+        if (!active) {
+          return;
+        }
+
+        setModelOptions(data.models);
+        const defaultId = data.default_model_id || data.models[0]?.id || null;
+        setSelectedModel(defaultId);
+        setModelError(null);
+      } catch (err) {
+        if (!active) {
+          return;
+        }
+        setModelOptions([]);
+        setSelectedModel(null);
+        setModelError(err instanceof Error ? err.message : "Unable to load embedding models.");
+      }
+    };
+
+    loadModels();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const handleSubmit = async () => {
     if (!query.trim()) {
       setError("Please provide at least one preference to search.");
@@ -49,10 +89,20 @@ const App = () => {
     setError(null);
 
     try {
+      const requestPayload: Record<string, unknown> = {
+        query,
+        k: 5,
+        use_vector: true,
+      };
+
+      if (selectedModel) {
+        requestPayload.model_id = selectedModel;
+      }
+
       const response = await fetch("/api/recommendations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, k: 5, use_vector: true })
+        body: JSON.stringify(requestPayload)
       });
 
       if (!response.ok) {
@@ -87,6 +137,10 @@ const App = () => {
             onChange={handleChange}
             onSubmit={handleSubmit}
             submitting={loading}
+            modelOptions={modelOptions}
+            selectedModelId={selectedModel}
+            onModelChange={(modelId) => setSelectedModel(modelId || null)}
+            modelError={modelError}
           />
           <aside className="query-preview">
             <h2>Search prompt</h2>
