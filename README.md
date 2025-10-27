@@ -40,23 +40,34 @@ and expose a simple similarity search API.
 * Docker & Docker Compose v2
 * Python 3.10+
 
-> #### Running in GitHub Codespaces
->
-> This repository now includes a pre-configured
-> [dev container](https://containers.dev/) definition under `.devcontainer/` so you
-> can launch it directly inside GitHub Codespaces. The container installs the
-> required Python and Node.js toolchains, creates a local virtual environment,
-> and restores both backend (`requirements.txt`) and frontend (`frontend/package.json`)
-> dependencies automatically. Once the Codespace finishes provisioning you can:
->
-> 1. Run `make up` to start Kafka and Postgres.
-> 2. Execute the Makefile targets (`make producer`, `make consumer`, `make api`,
->    etc.) from the integrated terminal to exercise the stack.
-> 3. Access forwarded ports 8000 (FastAPI) and 5173 (frontend) via the Codespaces
->    Ports panel.
->
-> The setup mirrors the local development instructions that follow, so the rest
-> of the README applies unchanged inside a Codespace.
+### Quick start with Docker
+
+1. Copy the environment template and adjust values as needed:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Start Kafka and Postgres in the background:
+
+   ```bash
+   docker compose up -d
+   # or: make up
+   ```
+
+3. Tail logs while developing:
+
+   ```bash
+   docker compose logs -f
+   # or: make logs
+   ```
+
+4. Shut everything down when you are done:
+
+   ```bash
+   docker compose down -v
+   # or: make down
+   ```
 
 ### 1. Configure environment variables
 
@@ -75,11 +86,7 @@ Key environment variables for the embedding pipeline:
 
 ### 2. Start infrastructure
 
-```bash
-docker compose up -d
-```
-
-This command launches:
+`docker compose up -d` (or `make up`) launches:
 
 * `kafka` – Apache Kafka 3.5 in KRaft mode with the `resorts` topic
   bootstrapped automatically.
